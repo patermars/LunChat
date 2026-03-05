@@ -192,6 +192,15 @@ html, body { height: 100%; font-family: 'DM Sans', sans-serif; background: var(-
 .msg-row:not(.mine) .bubble { background:var(--recv-bg); color:var(--ink); border-bottom-left-radius:4px; box-shadow:var(--shadow-sm); }
 .msg-row.mine .bubble { background:var(--sent-bg); color:white; border-bottom-right-radius:4px; }
 
+.file-attach { display:inline-flex; align-items:center; gap:8px; background:rgba(0,0,0,.1); border-radius:var(--r-md); padding:8px 12px; margin-top:6px; text-decoration:none; color:inherit; transition:background .15s; }
+.file-attach:hover { background:rgba(0,0,0,.15); }
+.msg-row:not(.mine) .file-attach { background:var(--moss-50); }
+.msg-row:not(.mine) .file-attach:hover { background:var(--moss-100); }
+.file-icon { font-size:18px; }
+.file-info { display:flex; flex-direction:column; gap:2px; }
+.file-name { font-size:12.5px; font-weight:500; }
+.file-size { font-size:10.5px; opacity:.7; }
+
 .msg-foot { display:flex; align-items:center; gap:4px; padding:0 4px; margin-top:2px; }
 .msg-row.mine .msg-foot { justify-content:flex-end; }
 .msg-time { font-size:10.5px; color:var(--stone); }
@@ -499,7 +508,8 @@ body.ping-flash #ping-overlay { animation: pingFlash 2s ease-in-out; }
         <button class="btn-icon extra-btn" title="Emoji">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
         </button>
-        <button class="btn-icon extra-btn" title="Attach">
+        <input type="file" id="file-input" style="display:none">
+        <button class="btn-icon extra-btn" title="Attach" onclick="document.getElementById('file-input').click()">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
         </button>
       </div>
@@ -533,9 +543,16 @@ let activeRoom  = null;
 let typingTimer = null;
 let mySid       = null;
 let pingFlashTimer = null;
+let selectedFile = null;
 
 // ── helpers ───────────────────────────────────────────────────────────
 const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+function formatFileSize(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+}
 
 function scrollBottom() {
   const a = document.getElementById('messages-area');
@@ -665,11 +682,23 @@ function renderMsg(msg, color) {
       </div>`;
   }
 
+  let fileHtml = '';
+  if (msg.file) {
+    fileHtml = `
+      <a href="${msg.file.url}" target="_blank" class="file-attach">
+        <span class="file-icon">📎</span>
+        <div class="file-info">
+          <span class="file-name">${esc(msg.file.name)}</span>
+          <span class="file-size">${formatFileSize(msg.file.size)}</span>
+        </div>
+      </a>`;
+  }
+
   row.innerHTML = `
     <div class="msg-av ${mine ? 'ghost' : ''}" style="background:${color}">${letter}</div>
     <div class="msg-col">
       ${sender}
-      <div class="bubble">${replyHtml}${esc(msg.text)}</div>
+      <div class="bubble">${replyHtml}${msg.text ? esc(msg.text) : ''}${fileHtml}</div>
       <div class="msg-foot">
         <span class="msg-time">${msg.time}</span>
         ${editedTag}
@@ -947,7 +976,8 @@ function setBadge(name, n) {
 function updatePreview(name, sender, text, time) {
   const p = document.getElementById(`rp-${name}`);
   const t = document.getElementById(`rt-${name}`);
-  if (p) p.textContent = sender + ': ' + text.substring(0,36) + (text.length>36?'…':'');
+  const preview = text || '📎 File';
+  if (p) p.textContent = sender + ': ' + preview.substring(0,36) + (preview.length>36?'…':'');
   if (t) t.textContent = time;
 }
 
@@ -1059,8 +1089,23 @@ socket.on('room_error', ({ msg }) => {
 function sendMessage() {
   const input = document.getElementById('msg-input');
   const text  = input.value.trim();
-  if (!text || !activeRoom) return;
-  socket.emit('send_message', { room: activeRoom, text, reply_to: replyingTo });
+  if ((!text && !selectedFile) || !activeRoom) return;
+  
+  const msgData = { room: activeRoom, text, reply_to: replyingTo };
+  
+  if (selectedFile) {
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      msgData.file = { name: selectedFile.name, data: e.target.result, size: selectedFile.size };
+      socket.emit('send_message', msgData);
+      selectedFile = null;
+      input.placeholder = 'Type a message…';
+    };
+    reader.readAsDataURL(selectedFile);
+  } else {
+    socket.emit('send_message', msgData);
+  }
+  
   socket.emit('typing', { room: activeRoom, active: false });
   clearTimeout(typingTimer);
   cancelReply();
@@ -1082,6 +1127,15 @@ document.getElementById('msg-input').addEventListener('input', function() {
       socket.emit('typing', { room: activeRoom, active: false });
     }, 2500);
   }
+});
+
+// ── file input ────────────────────────────────────────────────────────
+document.getElementById('file-input').addEventListener('change', function(e) {
+  selectedFile = e.target.files[0];
+  if (selectedFile) {
+    document.getElementById('msg-input').placeholder = `📎 ${selectedFile.name} - Press Enter to send`;
+  }
+  this.value = '';
 });
 
 // ── search ────────────────────────────────────────────────────────────

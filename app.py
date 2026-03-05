@@ -1,12 +1,19 @@
-from flask import Flask, render_template, request
+from flask import Flask, render_template, request, send_from_directory
 from flask_socketio import SocketIO, emit, join_room, leave_room
 from datetime import datetime
 import random
 import socket as _socket
+import os
+import base64
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'mossy-hollow-secret'
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
+app.config['UPLOAD_FOLDER'] = 'uploads'
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading', max_http_buffer_size=16 * 1024 * 1024)
+
+if not os.path.exists(app.config['UPLOAD_FOLDER']):
+    os.makedirs(app.config['UPLOAD_FOLDER'])
 
 # ── In-memory store ──────────────────────────────────────────────────
 rooms        = {}          # room_name -> [msg, ...]
@@ -65,6 +72,10 @@ def index():
             "member_count": len(room_members.get(r["name"], {})),
         })
     return render_template('index.html', rooms=room_list)
+
+@app.route('/uploads/<filename>')
+def uploaded_file(filename):
+    return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
 
 # ── Socket events ────────────────────────────────────────────────────
@@ -151,7 +162,9 @@ def handle_message(data):
     room     = data['room']
     text     = data['text'].strip()
     username = online_users.get(request.sid, 'Anonymous')
-    if not text:
+    file_data = data.get('file')
+    
+    if not text and not file_data:
         return
 
     init_room(room)
@@ -165,6 +178,14 @@ def handle_message(data):
         "edited":   False,
         "timestamp": datetime.now().isoformat()
     }
+    
+    if file_data:
+        filename = f"{msg_counter[room]}_{file_data['name']}"
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        with open(filepath, 'wb') as f:
+            f.write(base64.b64decode(file_data['data'].split(',')[1]))
+        msg['file'] = {'name': file_data['name'], 'url': f'/uploads/{filename}', 'size': file_data['size']}
+    
     rooms[room].append(msg)
     emit('new_message', {'room': room, 'message': msg}, to=room)
 
