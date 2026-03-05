@@ -147,6 +147,8 @@ def handle_message(data):
         "text":     text,
         "time":     now_time(),
         "reply_to": data.get('reply_to'),
+        "edited":   False,
+        "timestamp": datetime.now().isoformat()
     }
     
     if file_data:
@@ -158,6 +160,34 @@ def handle_message(data):
     
     rooms[room].append(msg)
     emit('new_message', {'room': room, 'message': msg}, to=room)
+
+@socketio.on('edit_message')
+def handle_edit_message(data):
+    room = data['room']
+    msg_id = data['id']
+    new_text = data['text'].strip()
+    username = online_users.get(request.sid, 'Anonymous')
+    
+    if not new_text or room not in rooms:
+        return
+
+    msg = next((m for m in rooms[room] if m['id'] == msg_id), None)
+    
+    if not msg:
+        return
+
+    is_owner = msg['sender'] == username
+    msg_time = datetime.fromisoformat(msg['timestamp'])
+    is_recent = (datetime.now() - msg_time).total_seconds() < 900
+
+    if is_owner and is_recent:
+        msg['text'] = new_text
+        msg['time'] = now_time()
+        msg['edited'] = True
+        is_latest = bool(rooms[room]) and rooms[room][-1]['id'] == msg['id']
+        emit('message_edited', {'room': room, 'message': msg, 'is_latest': is_latest}, to=room)
+    else:
+        emit('edit_error', {'msg': 'Cannot edit this message.'}, room=request.sid)
 
 @socketio.on('typing')
 def handle_typing(data):

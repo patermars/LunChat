@@ -305,6 +305,49 @@ html, body { height: 100%; font-family: 'DM Sans', sans-serif; background: var(-
 }
 .room-row:hover .delete-room-btn { display: flex; align-items: center; }
 .delete-room-btn:hover { color: #c0392b !important; background: #fdf0ef; }
+.edit-input {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  padding: 5px;
+  font-size: 0.95em;
+  resize: none;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+
+.edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 5px;
+}
+
+.edit-save, .edit-cancel {
+  border: none;
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.85em;
+}
+
+.edit-save {
+  background: #3d6b45;
+  color: white;
+}
+
+.edit-cancel {
+  background: #eee;
+  color: #555;
+}
+
+.msg-edited {
+  font-size: 0.75em;
+  color: rgba(0,0,0,0.4);
+  margin-left: 4px;
+  font-style: italic;
+}
 </style>
 </head>
 <body>
@@ -490,6 +533,13 @@ function isMine(msg) {
   return msg.sender === myUsername;
 }
 
+function canEditMessage(msg) {
+  if (!isMine(msg) || !msg.timestamp) return false;
+  const createdAt = new Date(msg.timestamp);
+  if (Number.isNaN(createdAt.getTime())) return false;
+  return (Date.now() - createdAt.getTime()) < (15 * 60 * 1000);
+}
+
 // ── username gate ─────────────────────────────────────────────────────
 document.getElementById('gate-btn').addEventListener('click', submitUsername);
 document.getElementById('gate-input').addEventListener('keydown', e => {
@@ -520,6 +570,7 @@ socket.on('username_error', ({ msg }) => {
 // ── render message ────────────────────────────────────────────────────
 function renderMsg(msg, color) {
   const mine  = isMine(msg);
+  const canEdit = canEditMessage(msg);
   const row   = document.createElement('div');
   row.classList.add('msg-row');
   if (mine) row.classList.add('mine');
@@ -528,6 +579,8 @@ function renderMsg(msg, color) {
   const letter  = msg.sender[0].toUpperCase();
   const receipt = mine ? `<span class="receipt">✓✓</span>` : '';
   const sender  = !mine ? `<div class="msg-sender">${esc(msg.sender)}</div>` : '';
+  
+  const editedTag = msg.edited ? '<span class="msg-edited">(edited)</span>' : '';
 
   let replyHtml = '';
   if (msg.reply_to) {
@@ -557,14 +610,133 @@ function renderMsg(msg, color) {
       <div class="bubble">${replyHtml}${msg.text ? esc(msg.text) : ''}${fileHtml}</div>
       <div class="msg-foot">
         <span class="msg-time">${msg.time}</span>
+        ${editedTag}
         ${receipt}
       </div>
     </div>
     <div class="msg-actions">
       <button class="msg-action-btn" onclick="startReply(${msg.id}, '${esc(msg.sender).replace(/'/g,"\\'")}', '${esc(msg.text).replace(/'/g,"\\'").substring(0,60)}')" title="Reply">↩ Reply</button>
+      ${canEdit ? '<button class="msg-action-btn msg-edit-btn" title="Edit">✎ Edit</button>' : ''}
     </div>`;
+
+    if (canEdit) {
+    const editBtn = row.querySelector('.msg-edit-btn');
+    if (editBtn) {
+      editBtn.onclick = () => startEdit(msg.id, msg.text);
+    }
+    row.ondblclick = () => startEdit(msg.id, msg.text);
+  }
   return row;
 }
+
+function startEdit(id, currentText) {
+  const row = document.querySelector(`.msg-row[data-msg-id="${id}"]`);
+  if (!row || row.querySelector('.edit-input')) return; // Already editing
+
+  const bubble = row.querySelector('.bubble');
+  const originalHtml = bubble.innerHTML;
+  
+  // Create edit input
+  const input = document.createElement('textarea');
+  input.className = 'edit-input';
+  input.value = currentText;
+  
+  // Actions wrapper
+  const actions = document.createElement('div');
+  actions.className = 'edit-actions';
+  actions.innerHTML = `
+    <button class="edit-save">Save</button>
+    <button class="edit-cancel">Cancel</button>`;
+
+  // Replace bubble content
+  bubble.innerHTML = '';
+  bubble.appendChild(input);
+  bubble.appendChild(actions);
+  input.focus();
+  input.style.height = 'auto';
+  input.style.height = input.scrollHeight + 'px';
+
+  // Event Listeners
+  const saveBtn = actions.querySelector('.edit-save');
+  const cancelBtn = actions.querySelector('.edit-cancel');
+
+  function saveEdit() {
+    const newText = input.value.trim();
+    if (newText && newText !== currentText) {
+      socket.emit('edit_message', { room: activeRoom, id: id, text: newText });
+    }
+    // Restore UI immediately (optimistic) or wait for server? 
+    // We'll wait for server event 'message_edited' to update cleanly.
+    // Just restore to original for now in case of cancel/error, or disable input.
+    bubble.innerHTML = originalHtml; 
+  }
+
+  function cancelEdit() {
+    bubble.innerHTML = originalHtml;
+  }
+
+  saveBtn.onclick = saveEdit;
+  cancelBtn.onclick = cancelEdit;
+  
+  input.onkeydown = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      saveEdit();
+    }
+    if (e.key === 'Escape') {
+      cancelEdit();
+    }
+  };
+  
+  input.oninput = function() {
+    this.style.height = 'auto';
+    this.style.height = Math.min(this.scrollHeight, 130) + 'px';
+  };
+}
+
+socket.on('message_edited', ({ room, message, is_latest }) => {
+  const rows = Array.from(document.querySelectorAll('#messages-area .msg-row'));
+  const lastRow = rows.length ? rows[rows.length - 1] : null;
+  const isLatestInActiveRoom =
+    room === activeRoom &&
+    lastRow &&
+    String(lastRow.dataset.msgId) === String(message.id);
+
+  if (is_latest || isLatestInActiveRoom) {
+    updatePreview(room, message.sender, message.text, message.time);
+  }
+  if (room !== activeRoom) return;
+  
+  const row = document.querySelector(`.msg-row[data-msg-id="${message.id}"]`);
+  if (!row) return;
+
+  const bubble = row.querySelector('.bubble');
+  const foot = row.querySelector('.msg-foot .msg-time');
+  
+  // Re-render content
+  // Note: This simple implementation replaces the whole bubble, removing reply_html if it existed.
+  // To be perfect, you'd want to re-render the whole row using renderMsg(), but scroll position might jump.
+  
+  // Simpler Update:
+  const textNode = bubble.querySelector('.edit-input') ? null : bubble; // If not currently editing
+  if (textNode) {
+      // Just update text
+      // Since we might have reply HTML, let's just re-render the row properly
+      const color = roomColor(room);
+      const newRow = renderMsg(message, color);
+      row.replaceWith(newRow);
+      scrollBottom(); // Just in case
+  } else {
+     // If user was currently editing this message, close the edit mode
+     const color = roomColor(room);
+     const newRow = renderMsg(message, color);
+     row.replaceWith(newRow);
+  }
+});
+
+socket.on('edit_error', ({ msg }) => {
+  alert(msg || 'Cannot edit this message.');
+});
 
 let replyingTo = null;
 
