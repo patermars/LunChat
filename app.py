@@ -5,6 +5,8 @@ import random
 import socket as _socket
 import os
 import base64
+import threading
+import time
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'mossy-hollow-secret'
@@ -22,6 +24,39 @@ room_members = {}          # room_name -> {sid: username}
 online_users = {}          # sid -> username
 room_notepads = {}         # room_name -> {"content": str, "updated_by": str, "updated_at": str, "revision": int}
 room_polls = {}            # room_name -> {poll_id: {question, options: [{text, votes: [username]}], created_by, created_at}}
+
+# Bot
+BOT_NAME = "RoastBot"
+BOT_SID = "bot_sid_12345"
+roast_lines = []
+
+def load_roasts():
+    global roast_lines
+    try:
+        with open('roast.txt', 'r', encoding='utf-8') as f:
+            roast_lines = [line.strip() for line in f if line.strip()]
+    except:
+        roast_lines = ["You're not worth my time.", "Try harder next time."]
+
+load_roasts()
+
+def bot_reply(room, trigger_msg):
+    time.sleep(random.uniform(1, 3))
+    if room not in rooms:
+        return
+    msg_counter[room] += 1
+    roast = random.choice(roast_lines) if roast_lines else "..."
+    msg = {
+        "id": msg_counter[room],
+        "sender": BOT_NAME,
+        "text": roast,
+        "time": now_time(),
+        "reply_to": None,
+        "edited": False,
+        "timestamp": datetime.now().isoformat()
+    }
+    rooms[room].append(msg)
+    socketio.emit('new_message', {'room': room, 'message': msg}, to=room)
 
 DEFAULT_ROOMS = [
     {"name": "general",   "color": "#3d6b45", "pinned": True}
@@ -203,6 +238,9 @@ def handle_message(data):
     
     rooms[room].append(msg)
     emit('new_message', {'room': room, 'message': msg}, to=room)
+    
+    if text and random.random() < 0.3:
+        threading.Thread(target=bot_reply, args=(room, text)).start()
 
 @socketio.on('edit_message')
 def handle_edit_message(data):
