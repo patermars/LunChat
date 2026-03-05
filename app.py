@@ -20,6 +20,8 @@ rooms        = {}          # room_name -> [msg, ...]
 msg_counter  = {}          # room_name -> int
 room_members = {}          # room_name -> {sid: username}
 online_users = {}          # sid -> username
+room_notepads = {}         # room_name -> {"content": str, "updated_by": str, "updated_at": str, "revision": int}
+room_polls = {}            # room_name -> {poll_id: {question, options: [{text, votes: [username]}], created_by, created_at}}
 
 DEFAULT_ROOMS = [
     {"name": "general",   "color": "#3d6b45", "pinned": True}
@@ -31,6 +33,13 @@ def init_room(name):
         rooms[name]        = []
         msg_counter[name]  = 0
         room_members[name] = {}
+    if name not in room_notepads:
+        room_notepads[name] = {
+            "content": "",
+            "updated_by": "",
+            "updated_at": "",
+            "revision": 0,
+        }
 
 def member_payload(room):
     members = room_members.get(room, {})
@@ -105,6 +114,12 @@ def on_join(data):
         'members':  [m["username"] for m in members],
         'member_info': members,
         'messages': rooms.get(room, []),
+        'notepad': room_notepads.get(room, {
+            "content": "",
+            "updated_by": "",
+            "updated_at": "",
+            "revision": 0,
+        }),
         'my_sid':   request.sid,
     })
 
@@ -226,6 +241,35 @@ def handle_typing(data):
         'active': data.get('active', False),
     }, to=data['room'], include_self=False)
 
+@socketio.on('notepad_update')
+def handle_notepad_update(data):
+    room = (data or {}).get('room', '').strip()
+    content = (data or {}).get('content', '')
+
+    if not room or not isinstance(content, str):
+        return
+    if room not in room_members or request.sid not in room_members[room]:
+        return
+
+    init_room(room)
+    existing = room_notepads.get(room, {})
+    next_revision = int(existing.get('revision', 0)) + 1
+    payload = {
+        'room': room,
+        'content': content[:20000],
+        'updated_by': online_users.get(request.sid, 'Anonymous'),
+        'updated_at': now_time(),
+        'revision': next_revision,
+        'sid': request.sid,
+    }
+    room_notepads[room] = {
+        'content': payload['content'],
+        'updated_by': payload['updated_by'],
+        'updated_at': payload['updated_at'],
+        'revision': payload['revision'],
+    }
+    emit('notepad_updated', payload, to=room)
+
 @socketio.on('create_room')
 def handle_create_room(data):
     name = data['name'].strip().lower().replace(' ', '-')
@@ -239,6 +283,42 @@ def handle_create_room(data):
     init_room(name)
     emit('room_created', {'room': ROOM_META[name]}, broadcast=True)
 
+@socketio.on('create_poll')
+def handle_create_poll(data):
+    room = data.get('room')
+    question = data.get('question', '').strip()
+    options = data.get('options', [])
+    if not room or not question or len(options) < 2:
+        return
+    init_room(room)
+    if room not in room_polls:
+        room_polls[room] = {}
+    poll_id = len(room_polls[room]) + 1
+    room_polls[room][poll_id] = {
+        'id': poll_id,
+        'question': question,
+        'options': [{'text': opt, 'votes': []} for opt in options],
+        'created_by': online_users.get(request.sid, 'Anonymous'),
+        'created_at': now_time()
+    }
+    emit('poll_created', {'room': room, 'poll': room_polls[room][poll_id]}, to=room)
+
+@socketio.on('vote_poll')
+def handle_vote_poll(data):
+    room = data.get('room')
+    poll_id = data.get('poll_id')
+    option_idx = data.get('option_idx')
+    username = online_users.get(request.sid, 'Anonymous')
+    if room not in room_polls or poll_id not in room_polls[room]:
+        return
+    poll = room_polls[room][poll_id]
+    for opt in poll['options']:
+        if username in opt['votes']:
+            opt['votes'].remove(username)
+    if 0 <= option_idx < len(poll['options']):
+        poll['options'][option_idx]['votes'].append(username)
+    emit('poll_updated', {'room': room, 'poll': poll}, to=room)
+
 @socketio.on('delete_room')
 def handle_delete_room(data):
     name = data['name']
@@ -249,6 +329,8 @@ def handle_delete_room(data):
     rooms.pop(name, None)
     msg_counter.pop(name, None)
     room_members.pop(name, None)
+    room_notepads.pop(name, None)
+    room_polls.pop(name, None)
     emit('room_deleted', {'name': name}, broadcast=True)
 
 
