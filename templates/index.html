@@ -167,6 +167,59 @@ html, body { height: 100%; font-family: 'DM Sans', sans-serif; background: var(-
   color: white;
 }
 
+/* Shared room notepad */
+.notepad-wrap {
+  padding: 12px 22px;
+  background: linear-gradient(180deg, var(--moss-50) 0%, #f7fbf6 100%);
+  border-bottom: 1px solid var(--moss-100);
+  flex-shrink: 0;
+}
+.notepad-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.notepad-title {
+  font-size: 12px;
+  letter-spacing: .5px;
+  text-transform: uppercase;
+  color: var(--moss-700);
+  font-weight: 700;
+}
+.notepad-status {
+  font-size: 11px;
+  color: var(--stone);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.notepad-input {
+  width: 100%;
+  min-height: 96px;
+  max-height: 180px;
+  resize: vertical;
+  border: 1.5px solid var(--moss-100);
+  border-radius: var(--r-md);
+  padding: 10px 12px;
+  background: var(--cream);
+  color: var(--ink);
+  outline: none;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px;
+  line-height: 1.45;
+  transition: border-color .15s, box-shadow .15s;
+}
+.notepad-input:focus {
+  border-color: var(--moss-300);
+  box-shadow: 0 0 0 3px rgba(106,155,114,.14);
+}
+.notepad-input:disabled {
+  opacity: .65;
+  cursor: not-allowed;
+}
+
 /* Messages */
 .messages-area { flex:1; overflow-y:auto; padding:22px 28px; display:flex; flex-direction:column; gap:2px; scroll-behavior:smooth; }
 .messages-area::-webkit-scrollbar { width:4px; }
@@ -380,6 +433,73 @@ body.ping-flash #ping-overlay { animation: pingFlash 2s ease-in-out; }
   10%, 30%, 50%, 70%, 90% { opacity: .95; }
   20%, 40%, 60%, 80% { opacity: .12; }
 }
+
+/* Poll */
+.poll-card {
+  background: var(--cream);
+  border: 1.5px solid var(--moss-100);
+  border-radius: var(--r-md);
+  padding: 14px 16px;
+  margin: 8px 0;
+  max-width: 420px;
+}
+.poll-question {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--moss-700);
+  margin-bottom: 10px;
+}
+.poll-option {
+  position: relative;
+  border: 1.5px solid var(--moss-100);
+  border-radius: var(--r-sm);
+  padding: 9px 12px;
+  margin-bottom: 6px;
+  cursor: pointer;
+  transition: all .15s;
+  overflow: hidden;
+}
+.poll-option:hover {
+  border-color: var(--moss-300);
+  background: var(--moss-10);
+}
+.poll-option.voted {
+  border-color: var(--moss-500);
+  background: var(--moss-50);
+}
+.poll-bar {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: var(--moss-100);
+  transition: width .3s;
+  z-index: 0;
+}
+.poll-option.voted .poll-bar {
+  background: var(--moss-200);
+}
+.poll-content {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.poll-text {
+  font-size: 13px;
+  color: var(--ink);
+}
+.poll-votes {
+  font-size: 12px;
+  color: var(--stone);
+  font-weight: 500;
+}
+.poll-footer {
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--stone);
+}
 </style>
 </head>
 <body>
@@ -487,6 +607,14 @@ body.ping-flash #ping-overlay { animation: pingFlash 2s ease-in-out; }
     <!-- Live members bar -->
     <div class="members-bar" id="members-bar" style="display:none"></div>
 
+    <section class="notepad-wrap">
+      <div class="notepad-head">
+        <div class="notepad-title">Collaborative Notepad</div>
+        <div class="notepad-status" id="notepad-status">Join a room to start taking shared notes.</div>
+      </div>
+      <textarea id="notepad-input" class="notepad-input" placeholder="Write shared notes for this room..." disabled></textarea>
+    </section>
+
     <div class="reply-bar" id="reply-bar">
     <div class="reply-bar-text">
         Replying to <strong id="reply-bar-sender"></strong>:
@@ -512,6 +640,9 @@ body.ping-flash #ping-overlay { animation: pingFlash 2s ease-in-out; }
         <button class="btn-icon extra-btn" title="Attach" onclick="document.getElementById('file-input').click()">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
         </button>
+        <button class="btn-icon extra-btn" id="poll-btn" title="Create Poll">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg>
+        </button>
       </div>
       <div class="input-wrap">
         <textarea id="msg-input" rows="1" placeholder="Type a message…"></textarea>
@@ -536,6 +667,22 @@ body.ping-flash #ping-overlay { animation: pingFlash 2s ease-in-out; }
   </div>
 </div>
 
+<!-- Poll Modal -->
+<div class="modal-bg" id="poll-modal">
+  <div class="modal">
+    <h2>Create a Poll</h2>
+    <input type="text" id="poll-question" placeholder="Question" maxlength="100">
+    <input type="text" id="poll-opt1" placeholder="Option 1" maxlength="50">
+    <input type="text" id="poll-opt2" placeholder="Option 2" maxlength="50">
+    <input type="text" id="poll-opt3" placeholder="Option 3 (optional)" maxlength="50">
+    <div class="modal-error" id="poll-error"></div>
+    <div class="modal-actions">
+      <button class="btn-ghost" id="poll-cancel">Cancel</button>
+      <button class="btn-primary" id="poll-create">Create</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const socket = io();
 let myUsername  = '';
@@ -544,6 +691,8 @@ let typingTimer = null;
 let mySid       = null;
 let pingFlashTimer = null;
 let selectedFile = null;
+let notepadTimer = null;
+let suppressNotepadInput = false;
 
 // ── helpers ───────────────────────────────────────────────────────────
 const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
@@ -628,6 +777,27 @@ function playPingBeep() {
     osc.onended = () => ctx.close();
   } catch (e) {
     // Ignore browsers that block autoplayed audio.
+  }
+}
+
+function setNotepadStatus(text) {
+  const status = document.getElementById('notepad-status');
+  if (status) status.textContent = text;
+}
+
+function loadNotepad(notepadData) {
+  const note = notepadData || {};
+  const input = document.getElementById('notepad-input');
+  if (!input) return;
+  suppressNotepadInput = true;
+  input.value = note.content || '';
+  input.disabled = !activeRoom;
+  suppressNotepadInput = false;
+
+  if (note.updated_by && note.updated_at) {
+    setNotepadStatus(`Updated by ${note.updated_by} at ${note.updated_at}`);
+  } else {
+    setNotepadStatus('Shared in this room');
   }
 }
 
@@ -982,7 +1152,7 @@ function updatePreview(name, sender, text, time) {
 }
 
 // ── socket events ─────────────────────────────────────────────────────
-socket.on('room_data', ({ room, color, members, member_info, messages, my_sid }) => {
+socket.on('room_data', ({ room, color, members, member_info, messages, my_sid, notepad }) => {
   if (room !== activeRoom) return;
   if (my_sid) mySid = my_sid;
 
@@ -991,6 +1161,7 @@ socket.on('room_data', ({ room, color, members, member_info, messages, my_sid })
   document.getElementById('ch-name').textContent   = room;
 
   renderMembers(normalizeMembers(members, member_info));
+  loadNotepad(notepad);
 
   const area = document.getElementById('messages-area');
   area.innerHTML = '';
@@ -1172,6 +1343,27 @@ document.getElementById('new-room-name').addEventListener('keydown', e => {
   if (e.key === 'Escape') document.getElementById('modal-cancel').click();
 });
 
+// ── notepad sync ──────────────────────────────────────────────────────
+document.getElementById('notepad-input').addEventListener('input', function() {
+  if (suppressNotepadInput || !activeRoom) return;
+  clearTimeout(notepadTimer);
+  notepadTimer = setTimeout(() => {
+    socket.emit('notepad_update', { room: activeRoom, content: this.value });
+  }, 400);
+});
+
+socket.on('notepad_updated', ({ room, content, updated_by, updated_at, sid }) => {
+  if (room !== activeRoom) return;
+  const input = document.getElementById('notepad-input');
+  if (!input || sid === mySid) return;
+  suppressNotepadInput = true;
+  const cursorPos = input.selectionStart;
+  input.value = content;
+  input.setSelectionRange(cursorPos, cursorPos);
+  suppressNotepadInput = false;
+  setNotepadStatus(`Updated by ${updated_by} at ${updated_at}`);
+});
+
 // ── auto-login if name was saved ──────────────────────────────────────
 const saved = localStorage.getItem('mossy_username');
 if (saved) {
@@ -1183,3 +1375,82 @@ if (saved) {
 </script>
 </body>
 </html>
+
+<script>
+// Poll functionality
+document.getElementById('poll-btn').addEventListener('click', () => {
+  document.getElementById('poll-modal').classList.add('open');
+  document.getElementById('poll-question').focus();
+  document.getElementById('poll-error').textContent = '';
+});
+document.getElementById('poll-cancel').addEventListener('click', () => {
+  document.getElementById('poll-modal').classList.remove('open');
+  document.getElementById('poll-question').value = '';
+  document.getElementById('poll-opt1').value = '';
+  document.getElementById('poll-opt2').value = '';
+  document.getElementById('poll-opt3').value = '';
+});
+document.getElementById('poll-create').addEventListener('click', () => {
+  const q = document.getElementById('poll-question').value.trim();
+  const o1 = document.getElementById('poll-opt1').value.trim();
+  const o2 = document.getElementById('poll-opt2').value.trim();
+  const o3 = document.getElementById('poll-opt3').value.trim();
+  if (!q || !o1 || !o2) {
+    document.getElementById('poll-error').textContent = 'Question and at least 2 options required.';
+    return;
+  }
+  const opts = [o1, o2];
+  if (o3) opts.push(o3);
+  socket.emit('create_poll', { room: activeRoom, question: q, options: opts });
+  document.getElementById('poll-modal').classList.remove('open');
+  document.getElementById('poll-question').value = '';
+  document.getElementById('poll-opt1').value = '';
+  document.getElementById('poll-opt2').value = '';
+  document.getElementById('poll-opt3').value = '';
+});
+
+function renderPoll(poll) {
+  const card = document.createElement('div');
+  card.className = 'poll-card';
+  const total = poll.options.reduce((s, o) => s + o.votes.length, 0);
+  const myVote = poll.options.findIndex(o => o.votes.includes(myUsername));
+  let html = `<div class="poll-question">${esc(poll.question)}</div>`;
+  poll.options.forEach((opt, i) => {
+    const pct = total > 0 ? Math.round((opt.votes.length / total) * 100) : 0;
+    const voted = i === myVote ? 'voted' : '';
+    html += `
+      <div class="poll-option ${voted}" onclick="votePoll(${poll.id}, ${i})">
+        <div class="poll-bar" style="width:${pct}%"></div>
+        <div class="poll-content">
+          <span class="poll-text">${esc(opt.text)}</span>
+          <span class="poll-votes">${opt.votes.length}</span>
+        </div>
+      </div>`;
+  });
+  html += `<div class="poll-footer">Created by ${esc(poll.created_by)} at ${poll.created_at}</div>`;
+  card.innerHTML = html;
+  return card;
+}
+
+function votePoll(pollId, optIdx) {
+  socket.emit('vote_poll', { room: activeRoom, poll_id: pollId, option_idx: optIdx });
+}
+
+socket.on('poll_created', ({ room, poll }) => {
+  if (room !== activeRoom) return;
+  const area = document.getElementById('messages-area');
+  area.appendChild(renderPoll(poll));
+  scrollBottom();
+});
+
+socket.on('poll_updated', ({ room, poll }) => {
+  if (room !== activeRoom) return;
+  const cards = document.querySelectorAll('.poll-card');
+  cards.forEach(card => {
+    const q = card.querySelector('.poll-question');
+    if (q && q.textContent === poll.question) {
+      card.replaceWith(renderPoll(poll));
+    }
+  });
+});
+</script>
