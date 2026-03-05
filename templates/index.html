@@ -149,6 +149,23 @@ html, body { height: 100%; font-family: 'DM Sans', sans-serif; background: var(-
 .member-chip { display:inline-flex; align-items:center; gap:5px; background:var(--cream); border:1px solid var(--moss-100); border-radius:var(--r-full); padding:3px 10px 3px 7px; font-size:12px; color:var(--moss-700); font-weight:500; }
 .member-chip .dot { width:7px; height:7px; background:var(--accent); border-radius:50%; flex-shrink:0; }
 .member-chip.me-chip { background:var(--moss-50); border-color:var(--moss-200); }
+.member-ping-btn {
+  margin-left: 6px;
+  border: 1px solid var(--moss-200);
+  background: var(--moss-50);
+  color: var(--moss-700);
+  border-radius: var(--r-full);
+  padding: 1px 8px;
+  font-size: 10.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .12s, color .12s, border-color .12s;
+}
+.member-ping-btn:hover {
+  background: var(--moss-500);
+  border-color: var(--moss-500);
+  color: white;
+}
 
 /* Messages */
 .messages-area { flex:1; overflow-y:auto; padding:22px 28px; display:flex; flex-direction:column; gap:2px; scroll-behavior:smooth; }
@@ -348,9 +365,25 @@ html, body { height: 100%; font-family: 'DM Sans', sans-serif; background: var(-
   margin-left: 4px;
   font-style: italic;
 }
+
+#ping-overlay {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  background: radial-gradient(circle at center, rgba(255,255,210,.88) 0%, rgba(255,222,128,.6) 45%, rgba(255,255,255,0) 80%);
+  z-index: 9999;
+}
+body.ping-flash #ping-overlay { animation: pingFlash 2s ease-in-out; }
+@keyframes pingFlash {
+  0%, 100% { opacity: 0; }
+  10%, 30%, 50%, 70%, 90% { opacity: .95; }
+  20%, 40%, 60%, 80% { opacity: .12; }
+}
 </style>
 </head>
 <body>
+<div id="ping-overlay" aria-hidden="true"></div>
 
 <!-- ══ USERNAME GATE ══ -->
 <div id="gate">
@@ -508,6 +541,8 @@ const socket = io();
 let myUsername  = '';
 let activeRoom  = null;
 let typingTimer = null;
+let mySid       = null;
+let pingFlashTimer = null;
 let selectedFile = null;
 
 // ── helpers ───────────────────────────────────────────────────────────
@@ -538,6 +573,62 @@ function canEditMessage(msg) {
   const createdAt = new Date(msg.timestamp);
   if (Number.isNaN(createdAt.getTime())) return false;
   return (Date.now() - createdAt.getTime()) < (15 * 60 * 1000);
+}
+
+function normalizeMembers(members, memberInfo) {
+  if (Array.isArray(memberInfo) && memberInfo.length) {
+    return memberInfo
+      .filter(m => m && typeof m.username === 'string')
+      .map(m => ({ sid: m.sid || null, username: m.username }));
+  }
+  return (members || []).map(name => ({ sid: null, username: String(name) }));
+}
+
+function pingUser(sid, username) {
+  if (!activeRoom || !sid || sid === mySid) return;
+  socket.emit('ping_user', { to: sid, room: activeRoom });
+  const sub = document.getElementById('ch-sub');
+  const previous = sub.textContent;
+  sub.textContent = `Ping sent to ${username}`;
+  setTimeout(() => {
+    if (sub.textContent === `Ping sent to ${username}`) {
+      sub.textContent = previous;
+    }
+  }, 1200);
+}
+
+function triggerPingFlash() {
+  document.body.classList.remove('ping-flash');
+  // Force reflow so repeated pings restart the animation.
+  void document.body.offsetWidth;
+  document.body.classList.add('ping-flash');
+  clearTimeout(pingFlashTimer);
+  pingFlashTimer = setTimeout(() => {
+    document.body.classList.remove('ping-flash');
+  }, 2000);
+}
+
+function playPingBeep() {
+  const AudioCtx = window.AudioContext || window.webkitAudioContext;
+  if (!AudioCtx) return;
+  try {
+    const ctx = new AudioCtx();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = 880;
+    gain.gain.value = 0.0001;
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    const t = ctx.currentTime;
+    gain.gain.exponentialRampToValueAtTime(0.12, t + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.18);
+    osc.start(t);
+    osc.stop(t + 0.18);
+    osc.onended = () => ctx.close();
+  } catch (e) {
+    // Ignore browsers that block autoplayed audio.
+  }
 }
 
 // ── username gate ─────────────────────────────────────────────────────
@@ -812,15 +903,40 @@ function removeTyping() {
 }
 
 // ── members bar ───────────────────────────────────────────────────────
-function renderMembers(members) {
+function renderMembers(memberEntries) {
+  const members = Array.isArray(memberEntries) ? memberEntries : [];
   const bar = document.getElementById('members-bar');
   if (!members || members.length === 0) { bar.style.display = 'none'; return; }
   bar.style.display = 'flex';
-  bar.innerHTML = `<span class="members-bar-label">In room</span>` +
-    members.map(m => `
-      <span class="member-chip ${m === myUsername ? 'me-chip' : ''}">
-        <span class="dot"></span>${esc(m)}${m === myUsername ? ' (you)' : ''}
-      </span>`).join('');
+  bar.innerHTML = '<span class="members-bar-label">In room</span>';
+
+  members.forEach(member => {
+    const chip = document.createElement('span');
+    chip.className = `member-chip ${member.username === myUsername ? 'me-chip' : ''}`;
+
+    const dot = document.createElement('span');
+    dot.className = 'dot';
+    chip.appendChild(dot);
+
+    const label = document.createElement('span');
+    label.textContent = member.username + (member.username === myUsername ? ' (you)' : '');
+    chip.appendChild(label);
+
+    if (member.sid && member.sid !== mySid) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'member-ping-btn';
+      btn.textContent = 'Ping';
+      btn.title = `Ping ${member.username}`;
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        pingUser(member.sid, member.username);
+      });
+      chip.appendChild(btn);
+    }
+    bar.appendChild(chip);
+  });
+
   const sub = document.getElementById('ch-sub');
   sub.textContent = members.length === 1 ? '1 member' : `${members.length} members`;
 }
@@ -866,14 +982,15 @@ function updatePreview(name, sender, text, time) {
 }
 
 // ── socket events ─────────────────────────────────────────────────────
-socket.on('room_data', ({ room, color, members, messages }) => {
+socket.on('room_data', ({ room, color, members, member_info, messages, my_sid }) => {
   if (room !== activeRoom) return;
+  if (my_sid) mySid = my_sid;
 
   document.getElementById('ch-avatar').style.background = color;
   document.getElementById('ch-letter').textContent = room[0].toUpperCase();
   document.getElementById('ch-name').textContent   = room;
 
-  renderMembers(members);
+  renderMembers(normalizeMembers(members, member_info));
 
   const area = document.getElementById('messages-area');
   area.innerHTML = '';
@@ -924,8 +1041,21 @@ socket.on('typing', ({ room, user, active }) => {
   else removeTyping();
 });
 
-socket.on('member_update', ({ room, members }) => {
-  if (room === activeRoom) renderMembers(members);
+socket.on('member_update', ({ room, members, member_info }) => {
+  if (room === activeRoom) renderMembers(normalizeMembers(members, member_info));
+});
+
+socket.on('ping_received', ({ from }) => {
+  triggerPingFlash();
+  playPingBeep();
+  const area = document.getElementById('messages-area');
+  if (!area) return;
+  const note = document.createElement('div');
+  note.className = 'system-msg';
+  note.textContent = `${from || 'Someone'} pinged you`;
+  area.appendChild(note);
+  scrollBottom();
+  setTimeout(() => note.remove(), 2600);
 });
 
 socket.on('room_created', ({ room }) => {
