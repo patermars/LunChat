@@ -520,6 +520,41 @@ body.ping-flash #ping-overlay { animation: pingFlash 2s ease-in-out; }
   font-size: 11px;
   color: var(--stone);
 }
+
+/* Emoji Picker */
+.emoji-picker {
+  position: absolute;
+  bottom: 70px;
+  left: 22px;
+  background: var(--cream);
+  border: 1.5px solid var(--moss-100);
+  border-radius: var(--r-md);
+  padding: 12px;
+  box-shadow: var(--shadow-lg);
+  display: none;
+  z-index: 50;
+  width: 280px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+.emoji-picker.open { display: block; animation: modalIn .15s var(--ease); }
+.emoji-picker::-webkit-scrollbar { width: 4px; }
+.emoji-picker::-webkit-scrollbar-thumb { background: var(--pebble); border-radius: 4px; }
+.emoji-grid {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 4px;
+}
+.emoji-item {
+  font-size: 22px;
+  padding: 6px;
+  cursor: pointer;
+  border-radius: var(--r-sm);
+  text-align: center;
+  transition: background .12s;
+  user-select: none;
+}
+.emoji-item:hover { background: var(--moss-10); transform: scale(1.15); }
 </style>
 </head>
 <body>
@@ -651,9 +686,13 @@ body.ping-flash #ping-overlay { animation: pingFlash 2s ease-in-out; }
       </div>
     </div>
 
+    <div class="emoji-picker" id="emoji-picker">
+      <div class="emoji-grid" id="emoji-grid"></div>
+    </div>
+
     <div class="input-bar">
       <div class="input-extras">
-        <button class="btn-icon extra-btn" title="Emoji">
+        <button class="btn-icon extra-btn" id="emoji-btn" title="Emoji">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
         </button>
         <input type="file" id="file-input" style="display:none">
@@ -1442,6 +1481,34 @@ if (saved) {
 } else {
   document.getElementById('gate-input').focus();
 }
+
+// ── emoji picker ──────────────────────────────────────────────────────
+const emojis = ['😀','😃','😄','😁','😆','😅','🤣','😂','🙂','🙃','😉','😊','😇','🥰','😍','🤩','😘','😗','😚','😙','🥲','😋','😛','😜','🤪','😝','🤑','🤗','🤭','🤫','🤔','🤐','🤨','😐','😑','😶','😏','😒','🙄','😬','🤥','😌','😔','😪','🤤','😴','😷','🤒','🤕','🤢','🤮','🤧','🥵','🥶','😵','🤯','🤠','🥳','🥸','😎','🤓','🧐','😕','😟','🙁','☹️','😮','😯','😲','😳','🥺','😦','😧','😨','😰','😥','😢','😭','😱','😖','😣','😞','😓','😩','😫','🥱','😤','😡','😠','🤬','👍','👎','👌','✌️','🤞','🤟','🤘','🤙','👈','👉','👆','👇','☝️','✋','🤚','🖐️','🖖','👋','🤝','🙏','💪','🦾','🦿','🦵','🦶','👂','🦻','👃','🧠','🫀','🫁','🦷','🦴','👀','👁️','👅','👄','💋','🩸','❤️','🧡','💛','💚','💙','💜','🖤','🤍','🤎','💔','❣️','💕','💞','💓','💗','💖','💘','💝','🔥','✨','💫','⭐','🌟','✅','❌','💯','🎉','🎊','🎈','🎁','🏆','🥇','🥈','🥉','⚽','🏀','🏈','⚾','🥎','🎾','🏐','🏉','🥏','🎱','🪀','🏓','🏸','🏒','🏑','🥍','🏏','🪃','🥅','⛳','🪁','🏹','🎣','🤿','🥊','🥋','🎽','🛹','🛼','🛷','⛸️','🥌','🎿','⛷️','🏂','🪂','🏋️','🤼','🤸','🤺','⛹️','🤾','🏌️','🏇','🧘','🏊','🤽','🚣','🧗','🚴','🚵','🎯','🎮','🕹️','🎲','🎰','🎳'];
+const emojiGrid = document.getElementById('emoji-grid');
+emojis.forEach(emoji => {
+  const span = document.createElement('span');
+  span.className = 'emoji-item';
+  span.textContent = emoji;
+  span.onclick = () => {
+    const input = document.getElementById('msg-input');
+    input.value += emoji;
+    input.focus();
+  };
+  emojiGrid.appendChild(span);
+});
+
+document.getElementById('emoji-btn').addEventListener('click', (e) => {
+  e.stopPropagation();
+  document.getElementById('emoji-picker').classList.toggle('open');
+});
+
+document.addEventListener('click', (e) => {
+  const picker = document.getElementById('emoji-picker');
+  const btn = document.getElementById('emoji-btn');
+  if (!picker.contains(e.target) && !btn.contains(e.target)) {
+    picker.classList.remove('open');
+  }
+});
 </script>
 </body>
 </html>
