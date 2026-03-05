@@ -25,6 +25,10 @@ def init_room(name):
         msg_counter[name]  = 0
         room_members[name] = {}
 
+def member_payload(room):
+    members = room_members.get(room, {})
+    return [{"sid": sid, "username": username} for sid, username in members.items()]
+
 for r in DEFAULT_ROOMS:
     init_room(r["name"])
     
@@ -83,17 +87,20 @@ def on_join(data):
     room_members[room][request.sid] = username
     meta = ROOM_META.get(room, {})
 
+    members = member_payload(room)
     emit('room_data', {
         'room':     room,
         'color':    meta.get('color', '#3d6b45'),
-        'members':  list(room_members[room].values()),
+        'members':  [m["username"] for m in members],
+        'member_info': members,
         'messages': rooms.get(room, []),
         'my_sid':   request.sid,
     })
 
     emit('member_update', {
         'room':    room,
-        'members': list(room_members[room].values()),
+        'members': [m["username"] for m in members],
+        'member_info': members,
     }, to=room, include_self=False)
 
 @socketio.on('leave')
@@ -102,9 +109,11 @@ def on_leave(data):
     leave_room(room)
     if room in room_members:
         room_members[room].pop(request.sid, None)
+    members = member_payload(room)
     emit('member_update', {
         'room':    room,
-        'members': list(room_members.get(room, {}).values()),
+        'members': [m["username"] for m in members],
+        'member_info': members,
     }, to=room)
 
 @socketio.on('disconnect')
@@ -113,10 +122,29 @@ def on_disconnect():
     for room in list(room_members.keys()):
         if request.sid in room_members[room]:
             room_members[room].pop(request.sid)
+            members = member_payload(room)
             emit('member_update', {
                 'room':    room,
-                'members': list(room_members[room].values()),
+                'members': [m["username"] for m in members],
+                'member_info': members,
             }, to=room)
+
+@socketio.on('ping_user')
+def handle_ping_user(data):
+    target_sid = (data or {}).get('to')
+    room = (data or {}).get('room')
+    if not target_sid or target_sid == request.sid:
+        return
+    if room:
+        members = room_members.get(room, {})
+        if request.sid not in members or target_sid not in members:
+            return
+    from_user = online_users.get(request.sid, 'Anonymous')
+    emit('ping_received', {
+        'from': from_user,
+        'room': room,
+        'time': now_time(),
+    }, to=target_sid)
 
 @socketio.on('send_message')
 def handle_message(data):
