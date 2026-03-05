@@ -283,6 +283,24 @@ def handle_create_room(data):
     init_room(name)
     emit('room_created', {'room': ROOM_META[name]}, broadcast=True)
 
+@socketio.on('kick_user')
+def handle_kick_user(data):
+    target_sid = data.get('target_sid')
+    room = data.get('room')
+    if not target_sid or not room or room not in room_members:
+        return
+    if target_sid not in room_members[room]:
+        return
+    username = room_members[room].get(target_sid, 'User')
+    room_members[room].pop(target_sid, None)
+    emit('kicked', {'room': room}, to=target_sid)
+    members = member_payload(room)
+    emit('member_update', {
+        'room': room,
+        'members': [m["username"] for m in members],
+        'member_info': members,
+    }, to=room)
+
 @socketio.on('create_poll')
 def handle_create_poll(data):
     room = data.get('room')

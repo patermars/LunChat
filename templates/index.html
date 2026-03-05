@@ -166,6 +166,23 @@ html, body { height: 100%; font-family: 'DM Sans', sans-serif; background: var(-
   border-color: var(--moss-500);
   color: white;
 }
+.member-kick-btn {
+  margin-left: 4px;
+  border: 1px solid #fdd;
+  background: #fff;
+  color: #c0392b;
+  border-radius: var(--r-full);
+  padding: 1px 8px;
+  font-size: 10.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .12s, border-color .12s;
+}
+.member-kick-btn:hover {
+  background: #c0392b;
+  border-color: #c0392b;
+  color: white;
+}
 
 /* Shared room notepad */
 .notepad-wrap {
@@ -1106,6 +1123,19 @@ function renderMembers(memberEntries) {
         pingUser(member.sid, member.username);
       });
       chip.appendChild(btn);
+      
+      const kickBtn = document.createElement('button');
+      kickBtn.type = 'button';
+      kickBtn.className = 'member-kick-btn';
+      kickBtn.textContent = 'Kick';
+      kickBtn.title = `Kick ${member.username}`;
+      kickBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (confirm(`Kick ${member.username} from this room?`)) {
+          socket.emit('kick_user', { target_sid: member.sid, room: activeRoom });
+        }
+      });
+      chip.appendChild(kickBtn);
     }
     bar.appendChild(chip);
   });
@@ -1492,5 +1522,13 @@ socket.on('poll_updated', ({ room, poll }) => {
       card.replaceWith(renderPoll(poll));
     }
   });
+});
+
+socket.on('kicked', ({ room }) => {
+  if (room === activeRoom) {
+    alert('You have been kicked from this room.');
+    window.close();
+    setTimeout(() => location.reload(), 100);
+  }
 });
 </script>
