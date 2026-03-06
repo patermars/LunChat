@@ -187,7 +187,7 @@ html, body { height: 100%; font-family: 'DM Sans', sans-serif; background: var(-
 /* Shared room notepad */
 .notepad-wrap {
   padding: 12px 22px;
-  background: linear-gradient(180deg, var(--moss-50) 0%, #f7fbf6 100%);
+  background: linear-gradient(180deg, var(--moss-50) 0%, var(--moss-10) 100%);
   border-bottom: 1px solid var(--moss-100);
   flex-shrink: 0;
 }
@@ -555,6 +555,23 @@ body.ping-flash #ping-overlay { animation: pingFlash 2s ease-in-out; }
   user-select: none;
 }
 .emoji-item:hover { background: var(--moss-10); transform: scale(1.15); }
+
+.dark {
+  --moss-900: #f4f8f4; --moss-700: #d4e8d0; --moss-500: #a8c5a0; --moss-400: #6a9b72;
+  --moss-300: #4a7c5a; --moss-200: #3d6b45; --moss-100: #2d4a35; --moss-50: #1e2e20;
+  --moss-10: #1a2a1c; --sand: #1e2e20; --cream: #1a2a1c; --stone: #a8c5a0;
+  --pebble: #2d4a35; --mist: #c8d5c8; --ink: #eef5ee; --accent: #6a9b72;
+  --sent-bg: #3d6b45; --recv-bg: #2d4a35;
+  --shadow-sm: 0 1px 4px rgba(0,0,0,.3); --shadow-md: 0 4px 16px rgba(0,0,0,.4);
+  --shadow-lg: 0 8px 40px rgba(0,0,0,.5);
+}
+
+.theme-toggle { display:flex; align-items:center; gap:8px; padding:10px 16px; border-top:1px solid var(--moss-100); background:var(--cream); }
+.theme-toggle label { font-size:11px; color:var(--stone); font-weight:500; }
+.toggle-switch { position:relative; width:42px; height:22px; background:var(--pebble); border-radius:11px; cursor:pointer; transition:background .2s; }
+.toggle-switch.active { background:var(--moss-500); }
+.toggle-knob { position:absolute; top:2px; left:2px; width:18px; height:18px; background:white; border-radius:50%; transition:left .2s; }
+.toggle-switch.active .toggle-knob { left:22px; }
 </style>
 </head>
 <body>
@@ -564,7 +581,7 @@ body.ping-flash #ping-overlay { animation: pingFlash 2s ease-in-out; }
 <div id="gate">
   <div class="gate-card">
     <div class="gate-icon">🌿</div>
-    <div class="gate-title">Mossy Chat</div>
+    <div class="gate-title">Lun Chat</div>
     <div class="gate-sub">Enter your name to join your classmates</div>
     <input class="gate-input" id="gate-input" type="text" placeholder="Your name…" maxlength="24" autocomplete="off">
     <div class="gate-error" id="gate-error"></div>
@@ -580,7 +597,7 @@ body.ping-flash #ping-overlay { animation: pingFlash 2s ease-in-out; }
     <div class="sb-header">
       <div class="logo">
         <div class="logo-mark">🌿</div>
-        <span class="logo-name">Mossy Chat</span>
+        <span class="logo-name">Lun Chat</span>
       </div>
       <button class="btn-icon btn-add" id="btn-new-room" title="New Room">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
@@ -627,9 +644,11 @@ body.ping-flash #ping-overlay { animation: pingFlash 2s ease-in-out; }
           <div class="me-status">● Online</div>
         </div>
       </div>
-      <button class="btn-icon" style="width:30px;height:30px" title="Settings">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-      </button>
+    </div>
+    <div class="theme-toggle">
+      <label>☀️</label>
+      <div class="toggle-switch" id="dark-toggle"><div class="toggle-knob"></div></div>
+      <label>🌙</label>
     </div>
   </aside>
 
@@ -1481,6 +1500,15 @@ if (saved) {
 } else {
   document.getElementById('gate-input').focus();
 }
+
+const darkToggle = document.getElementById('dark-toggle');
+const savedDark = localStorage.getItem('mossy_dark') === 'true';
+if (savedDark) { document.documentElement.classList.add('dark'); darkToggle.classList.add('active'); }
+darkToggle.addEventListener('click', function() {
+  this.classList.toggle('active');
+  document.documentElement.classList.toggle('dark');
+  localStorage.setItem('mossy_dark', document.documentElement.classList.contains('dark'));
+});
 
 // ── emoji picker ──────────────────────────────────────────────────────
 const emojis = ['😀','😃','😄','😁','😆','😅','🤣','😂','🙂','🙃','😉','😊','😇','🥰','😍','🤩','😘','😗','😚','😙','🥲','😋','😛','😜','🤪','😝','🤑','🤗','🤭','🤫','🤔','🤐','🤨','😐','😑','😶','😏','😒','🙄','😬','🤥','😌','😔','😪','🤤','😴','😷','🤒','🤕','🤢','🤮','🤧','🥵','🥶','😵','🤯','🤠','🥳','🥸','😎','🤓','🧐','😕','😟','🙁','☹️','😮','😯','😲','😳','🥺','😦','😧','😨','😰','😥','😢','😭','😱','😖','😣','😞','😓','😩','😫','🥱','😤','😡','😠','🤬','👍','👎','👌','✌️','🤞','🤟','🤘','🤙','👈','👉','👆','👇','☝️','✋','🤚','🖐️','🖖','👋','🤝','🙏','💪','🦾','🦿','🦵','🦶','👂','🦻','👃','🧠','🫀','🫁','🦷','🦴','👀','👁️','👅','👄','💋','🩸','❤️','🧡','💛','💚','💙','💜','🖤','🤍','🤎','💔','❣️','💕','💞','💓','💗','💖','💘','💝','🔥','✨','💫','⭐','🌟','✅','❌','💯','🎉','🎊','🎈','🎁','🏆','🥇','🥈','🥉','⚽','🏀','🏈','⚾','🥎','🎾','🏐','🏉','🥏','🎱','🪀','🏓','🏸','🏒','🏑','🥍','🏏','🪃','🥅','⛳','🪁','🏹','🎣','🤿','🥊','🥋','🎽','🛹','🛼','🛷','⛸️','🥌','🎿','⛷️','🏂','🪂','🏋️','🤼','🤸','🤺','⛹️','🤾','🏌️','🏇','🧘','🏊','🤽','🚣','🧗','🚴','🚵','🎯','🎮','🕹️','🎲','🎰','🎳'];
