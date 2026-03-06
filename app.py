@@ -9,10 +9,10 @@ import threading
 import time
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'mossy-hollow-secret'
+app.config['SECRET_KEY'] = 'lun-hollow-secret'
 app.config['UPLOAD_FOLDER'] = 'uploads'
-app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading', max_http_buffer_size=16 * 1024 * 1024)
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024 * 1024 
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading', max_http_buffer_size=16 * 1024 * 1024 * 1024 )
 
 if not os.path.exists(app.config['UPLOAD_FOLDER']):
     os.makedirs(app.config['UPLOAD_FOLDER'])
@@ -394,7 +394,7 @@ if __name__ == '__main__':
     ip   = get_local_ip()
     port = 5000
     print("\n" + "=" * 54)
-    print("  🌿  Mossy Chat — LAN mode")
+    print("  🌿  Lun Chat — LAN mode")
     print(f"\n  Your machine  →  http://localhost:{port}")
     print(f"  Your friends  →  http://{ip}:{port}")
     print("\n  Share the second URL with everyone in your lab.")
